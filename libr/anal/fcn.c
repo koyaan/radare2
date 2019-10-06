@@ -2045,6 +2045,13 @@ R_API int r_anal_str_to_fcn(RAnal *a, RAnalFunction *f, const char *sig) {
 
 R_API RAnalFunction *r_anal_get_fcn_at(RAnal *anal, ut64 addr, int type) {
 #if 0
+	RAnalBlock *bb = r_anal_get_block (anal, addr);
+	if (bb) {
+		eprintf ("FAST FAILURE %p\n", bb->fcns);
+		return r_list_first (bb->fcns);
+	}
+#endif
+#if 0
 	// Linear scan
 	RAnalFunction *fcn, *ret = NULL;
 	RListIter *iter;
@@ -2073,9 +2080,9 @@ R_API RAnalFunction *r_anal_get_fcn_at(RAnal *anal, ut64 addr, int type) {
 	}
 	fcn_tree_foreach_intersect (anal->fcn_tree, it, fcn, addr, addr + 1) {
 		if (!type || (fcn && fcn->type & type)) {
-			if (addr == fcn->addr) {
+		//	if (addr == fcn->addr) {
 				return fcn;
-			}
+		//	}
 		}
 	}
 	return NULL;
@@ -2180,13 +2187,16 @@ R_API ut32 r_anal_fcn_realsize(const RAnalFunction *fcn) {
 	RAnalBlock *bb;
 	RAnalFunction *f;
 	ut32 sz = 0;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		sz += bb->size;
-	}
-	r_list_foreach (fcn->fcn_locs, fiter, f) {
-		r_list_foreach (f->bbs, iter, bb) {
+	if (!sz) {
+		r_list_foreach (fcn->bbs, iter, bb) {
 			sz += bb->size;
 		}
+		r_list_foreach (fcn->fcn_locs, fiter, f) {
+			r_list_foreach (f->bbs, iter, bb) {
+				sz += bb->size;
+			}
+		}
+		// fcn->_size = sz;
 	}
 	return sz;
 }
@@ -2363,8 +2373,5 @@ R_API void r_anal_fcn_check_bp_use(RAnal *anal, RAnalFunction *fcn) {
 
 R_API const char *r_anal_label_at(RAnal *a, ut64 addr) {
 	RAnalFunction *fcn = r_anal_get_fcn_in (a, addr, 0);
-	if (fcn) {
-		return r_anal_fcn_label_at (a, fcn, addr);
-	}
-	return NULL;
+	return fcn? r_anal_fcn_label_at (a, fcn, addr): NULL;
 }
