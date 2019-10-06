@@ -3,6 +3,7 @@ r_anal_sources = [
   'anal_ex.c',
   'bb.c',
   'block.c',
+  'function.c',
   'jmptbl.c',
   'cc.c',
   'class.c',

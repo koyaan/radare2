@@ -39,10 +39,6 @@ R_API void r_anal_bb_free(RAnalBlock *bb) {
 	}
 }
 
-R_API RList *r_anal_bb_list_new() {
-	return r_list_newf ((RListFree)r_anal_block_unref);
-}
-
 // TODO: remove the const ut8*buf, int len, and use the r_buf/r_io api instead
 R_API int r_anal_bb(RAnal *anal, RAnalBlock *bb, ut64 addr, const ut8 *buf, ut64 len, int head) {
 	r_return_val_if_fail (anal && bb && addr != UT64_MAX, R_ANAL_RET_END);

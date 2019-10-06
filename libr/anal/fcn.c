@@ -218,6 +218,7 @@ static RBNode *_fcn_tree_probe(FcnTreeIter *it, RBNode *x_, ut64 from, ut64 to) 
 }
 
 R_API bool r_anal_fcn_tree_delete(RAnal *anal, RAnalFunction *fcn) {
+	r_return_val_if_fail (anal && fcn, false);
 	bool ret_min = !!r_rbtree_aug_delete (&anal->fcn_tree, fcn, _fcn_tree_cmp, _fcn_tree_free, _fcn_tree_calc_max_addr, NULL);
 	bool ret_addr = !!r_rbtree_delete (&anal->fcn_addr_tree, fcn, _fcn_addr_tree_cmp, NULL, NULL);
 	if (ret_min != ret_addr) {
@@ -232,6 +233,7 @@ R_API bool r_anal_fcn_tree_delete(RAnal *anal, RAnalFunction *fcn) {
 R_API void r_anal_fcn_tree_insert(RAnal *anal, RAnalFunction *fcn) {
 	r_anal_function_ref (fcn);
 	r_rbtree_aug_insert (&anal->fcn_tree, fcn, &(fcn->rb), _fcn_tree_cmp, _fcn_tree_calc_max_addr, NULL);
+	r_anal_function_ref (fcn);
 	r_rbtree_insert (&anal->fcn_addr_tree, fcn, &(fcn->addr_rb), _fcn_addr_tree_cmp, NULL);
 }
 
@@ -374,18 +376,19 @@ R_API int r_anal_fcn_resize(RAnal *anal, RAnalFunction *fcn, int newsize) {
 	return true;
 }
 
-R_API RAnalFunction *r_anal_fcn_new() {
+R_API RAnalFunction *r_anal_fcn_new(RAnal *anal) {
 	RAnalFunction *fcn = R_NEW0 (RAnalFunction);
 	if (!fcn) {
 		return NULL;
 	}
+	fcn->anal = anal;
 	/* Function qualifier: static/volatile/inline/naked/virtual */
 	fcn->fmod = R_ANAL_FQUALIFIER_NONE;
 	/* Function calling convention: cdecl/stdcall/fastcall/etc */
 	/* Function attributes: weak/noreturn/format/etc */
 	fcn->addr = UT64_MAX;
 	fcn->ref = 1;
-	fcn->bbs = r_anal_bb_list_new ();
+	fcn->bbs = r_list_newf ((RListFree)r_anal_block_unref);
 	fcn->diff = r_anal_diff_new ();
 	fcn->has_changed = true;
 	fcn->bp_frame = true;
@@ -396,7 +399,7 @@ R_API RAnalFunction *r_anal_fcn_new() {
 }
 
 R_API RList *r_anal_fcn_list_new() {
-	return r_list_newf (r_anal_fcn_free);
+	return r_list_newf (r_anal_function_unref);
 }
 
 R_API void r_anal_fcn_free(void *_fcn) {
@@ -1584,6 +1587,9 @@ R_API int r_anal_fcn_insert(RAnal *anal, RAnalFunction *fcn) {
 	}
 	/* TODO: sdbization */
 	r_list_append (anal->fcns, fcn);
+	if (anal->verbose) {
+		eprintf ("INSERT FUN\n");
+	}
 	r_anal_fcn_tree_insert (anal, fcn);
 	if (anal->cb.on_fcn_new) {
 		anal->cb.on_fcn_new (anal, anal->user, fcn);
@@ -1598,7 +1604,7 @@ R_API int r_anal_fcn_add(RAnal *a, ut64 addr, ut64 size, const char *name, int t
 	bool append = false;
 	RAnalFunction *fcn = r_anal_get_fcn_in (a, addr, R_ANAL_FCN_TYPE_ROOT);
 	if (!fcn) {
-		if (!(fcn = r_anal_fcn_new ())) {
+		if (!(fcn = r_anal_fcn_new (a))) {
 			return false;
 		}
 		append = true;
@@ -1640,10 +1646,7 @@ R_API int r_anal_fcn_del_locs(RAnal *anal, ut64 addr) {
 			continue;
 		}
 		if (r_anal_fcn_in (fcn, addr)) {
-			// r_anal_function_unref (fcn);
-			if (!r_anal_fcn_tree_delete (anal, fcn)) {
-				return false;
-			}
+			r_anal_function_unref (fcn);
 			r_list_delete (anal->fcns, iter);
 		}
 	}
@@ -1652,19 +1655,30 @@ R_API int r_anal_fcn_del_locs(RAnal *anal, ut64 addr) {
 
 R_API int r_anal_fcn_del(RAnal *a, ut64 addr) {
 	eprintf ("r_anal_fcn_del: deprecated. use ref/unref\n");
+	const RList *fcns = r_anal_get_functions (a, addr);
+	RAnalFunction *fcn;
+	RListIter *iter, *iter2;
+	if (r_list_empty (fcns)) {
+		eprintf ("Cannot find any function here\n");
+	} else {
+		r_list_foreach_safe (a->fcns, iter, iter2, fcn) {
+			if (fcn->addr == addr) {
+				r_list_delete_data (a->fcns, fcn);
+				r_anal_fcn_tree_delete (a, fcn);
+			}
+		}
+		return true;
+	}
 	return false;
 #if 0
 	RAnalFunction *fcni;
-	RListIter *iter, *iter_tmp;
+	RListIter *iter_tmp;
 	r_list_foreach_safe (a->fcns, iter, iter_tmp, fcni) {
 		if (r_anal_fcn_in (fcni, addr) || fcni->addr == addr) {
 			if (a->cb.on_fcn_delete) {
 				a->cb.on_fcn_delete (a, a->user, fcni);
 			}
-			if (!r_anal_fcn_tree_delete (a, fcni)) {
-				return false;
-			}
-			r_list_delete (a->fcns, iter);
+			r_anal_function_unref (fcni);
 		}
 	}
 	return true;
