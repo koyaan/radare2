@@ -563,7 +563,7 @@ static int analyze_from_code_attr (RAnal *anal, RAnalFunction *fcn, RBinJavaFiel
 static int analyze_method(RAnal *anal, RAnalFunction *fcn, RAnalState *state) {
 	// deallocate niceties
 	r_list_free (fcn->bbs);
-	fcn->bbs = r_anal_bb_list_new ();
+	fcn->bbs = r_list_newf ((RListFree)r_anal_block_unref);
 	java_new_method (fcn->addr);
 	state->current_fcn = fcn;
 	// Not a resource leak.  Basic blocks should be stored in the state->fcn
